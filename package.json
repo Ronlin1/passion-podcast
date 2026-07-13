@@ -1,0 +1,30 @@
+{
+  "name": "passion-podcast-live",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "build": "node --check src/app.js && node --check src/server.js && node --check public/app.js",
+    "check": "node --check src/server.js"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^9.1.2",
+    "@solana/web3.js": "^1.98.4",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "fast-xml-parser": "^5.2.5",
+    "helmet": "^8.1.0",
+    "morgan": "^1.10.1",
+    "nanoid": "^5.1.5",
+    "serverless-http": "^3.2.0",
+    "snowflake-sdk": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "netlify-cli": "^26.2.0"
+  }
+}

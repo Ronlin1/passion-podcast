@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The Passion Podcast Live</title>
+    <meta name="description" content="Live AI-generated daily podcasts for any topic." />
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
+    <script src="https://unpkg.com/@solana/web3.js@1.98.4/lib/index.iife.min.js" defer></script>
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#studio">
+          <span class="brand-mark">PP</span>
+          <span>
+            <strong>The Passion Podcast</strong>
+            <small>Live AI episode studio</small>
+          </span>
+        </a>
+
+        <nav class="nav-tabs" aria-label="Views">
+          <button class="nav-tab active" type="button" data-view="studio">
+            <i data-lucide="radio"></i><span>Studio</span>
+          </button>
+          <button class="nav-tab" type="button" data-view="vault">
+            <i data-lucide="database"></i><span>Vault</span>
+          </button>
+          <button class="nav-tab" type="button" data-view="premium">
+            <i data-lucide="wallet-cards"></i><span>Premium</span>
+          </button>
+          <button class="nav-tab" type="button" data-view="account">
+            <i data-lucide="circle-user-round"></i><span>Account</span>
+          </button>
+        </nav>
+      </header>
+
+      <main>
+        <section class="view active" id="studio">
+          <section class="hero-stage">
+            <img class="hero-image" src="/assets/studio-hero.png" alt="Futuristic podcast studio" />
+            <div class="hero-shade"></div>
+            <div class="hero-content">
+              <p class="eyebrow">Gemini research + ElevenLabs voice + Snowflake vault + Solana unlock</p>
+              <h1 id="heroTitle">Any passion, broadcast daily.</h1>
+              <div class="hero-metrics" id="serviceMetrics">
+                <span><strong id="statusGemini">Gemini</strong></span>
+                <span><strong id="statusEleven">ElevenLabs</strong></span>
+                <span><strong id="statusSolana">Solana</strong></span>
+                <span><strong id="statusSnowflake">Snowflake</strong></span>
+              </div>
+            </div>
+            <span class="signal-chip"><span class="pulse-dot"></span><span id="liveMode">Checking services</span></span>
+          </section>
+
+          <div class="studio-grid">
+            <form class="panel control-panel" id="episodeForm">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Topic</p>
+                  <h2>Generate episode</h2>
+                </div>
+                <i data-lucide="sparkles"></i>
+              </div>
+
+              <label class="field-label" for="topicInput">Custom topic or subject</label>
+              <div class="topic-row relaxed-row">
+                <input
+                  id="topicInput"
+                  name="topic"
+                  type="text"
+                  value="space exploration"
+                  autocomplete="off"
+                  placeholder="Try football tactics, AI filmmaking, urban gardening..."
+                />
+                <button class="primary-button" type="submit" id="generateBtn">
+                  <i data-lucide="radio-tower"></i><span>Generate live</span>
+                </button>
+              </div>
+
+              <div class="chip-row" id="topicChips">
+                <button class="topic-chip active" type="button" data-topic="space exploration">Space</button>
+                <button class="topic-chip" type="button" data-topic="AI filmmaking">AI film</button>
+                <button class="topic-chip" type="button" data-topic="football tactics">Football</button>
+                <button class="topic-chip" type="button" data-topic="climate robotics">Robotics</button>
+              </div>
+
+              <div class="action-row">
+                <button class="secondary-button" type="button" id="suggestBtn">
+                  <i data-lucide="shuffle"></i><span>Random</span>
+                </button>
+              </div>
+
+              <fieldset class="source-controls">
+                <legend>Live sources</legend>
+                <label class="toggle"><input type="checkbox" name="source" value="News" checked /><span>News</span></label>
+                <label class="toggle"><input type="checkbox" name="source" value="Reddit" checked /><span>Reddit</span></label>
+                <label class="toggle"><input type="checkbox" name="source" value="Forums" checked /><span>Forums</span></label>
+              </fieldset>
+
+              <div class="split-fields">
+                <label>
+                  <span>Delivery</span>
+                  <input id="deliveryTime" type="time" value="07:30" />
+                </label>
+                <label>
+                  <span>Voice</span>
+                  <select id="voiceSelect">
+                    <option value="studio">Studio Host</option>
+                    <option value="female">Female Host</option>
+                    <option value="warm">Warm Female</option>
+                    <option value="male">Male Analyst</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Premium price optional</span>
+                  <input id="premiumPrice" type="number" min="0" max="10" step="0.001" placeholder="Free for now" />
+                </label>
+              </div>
+
+              <div class="pipeline" id="pipeline"></div>
+            </form>
+
+            <section class="panel player-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Episode</p>
+                  <h2 id="episodeTitle">Waiting for first live generation</h2>
+                </div>
+                <span class="status-pill" id="episodeStatus">Idle</span>
+              </div>
+
+              <div class="player-surface">
+                <button class="play-button" type="button" id="playEpisode" aria-label="Play episode">
+                  <i data-lucide="play"></i>
+                </button>
+                <div class="waveform" id="waveform" aria-hidden="true"></div>
+                <audio id="audioPlayer" controls></audio>
+              </div>
+              <a class="download-button disabled" id="downloadEpisode" href="#" download>
+                <i data-lucide="download"></i><span>Download MP3</span>
+              </a>
+
+              <p class="episode-summary" id="episodeSummary">Enter any topic, choose live sources, then generate.</p>
+              <div class="script-list" id="scriptList"></div>
+            </section>
+
+            <section class="panel source-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Source radar</p>
+                  <h2>Live signals</h2>
+                </div>
+                <span class="status-pill alt" id="sourceCount">0 hits</span>
+              </div>
+              <div class="source-list" id="sourceList"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="vault">
+          <div class="vault-grid">
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Storage</p>
+                  <h2>Episode vault</h2>
+                </div>
+                <i data-lucide="archive"></i>
+              </div>
+              <div class="warehouse-stats">
+                <span><strong id="vaultEpisodes">0</strong> episodes</span>
+                <span><strong id="vaultSources">0</strong> source rows</span>
+                <span><strong id="vaultAudio">0</strong> MP3 files</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Episode</th>
+                      <th>Topic</th>
+                      <th>Audio</th>
+                      <th>Sources</th>
+                    </tr>
+                  </thead>
+                  <tbody id="vaultRows"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="premium">
+          <div class="premium-grid">
+            <section class="panel premium-pass">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Solana</p>
+                  <h2>Premium pass</h2>
+                </div>
+                <i data-lucide="badge-dollar-sign"></i>
+              </div>
+              <div class="pass-visual">
+                <span>DEVNET PASS</span>
+                <strong id="passTopic">NO EPISODE</strong>
+                <small id="passPrice">0.08 SOL</small>
+              </div>
+              <button class="primary-button wide" type="button" id="paySolana">
+                <i data-lucide="wallet"></i><span>Pay with Phantom</span>
+              </button>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Deep dive</p>
+                  <h2>Premium queue</h2>
+                </div>
+                <span class="status-pill" id="premiumStatus">Locked</span>
+              </div>
+              <div class="premium-list" id="premiumList"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="account">
+          <section class="panel setup-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Profile</p>
+                <h2>Account and integrations</h2>
+              </div>
+              <button class="secondary-button" id="refreshStatus" type="button">
+                <i data-lucide="refresh-cw"></i><span>Refresh</span>
+              </button>
+            </div>
+            <div class="setup-grid" id="setupGrid"></div>
+            <div class="profile-note">
+              <strong>Production mode</strong>
+              <p>Configured integrations stay out of the studio UI. Connection details only appear here while you are preparing the app.</p>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>
