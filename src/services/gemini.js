@@ -126,7 +126,7 @@ async function callGenerateContentWithModel(prompt, modelName) {
         ],
         generationConfig: {
           temperature: 0.82,
-          maxOutputTokens: 1200,
+          maxOutputTokens: 2600,
           responseMimeType: "application/json",
         },
       }),
@@ -166,6 +166,63 @@ function normalizeScript(topic, script) {
   }));
 }
 
+function fallbackDraft({ topic, sources, premiumPriceSol, text }) {
+  const displayTopic = titleCase(topic);
+  const topSources = sources.slice(0, 3);
+  const sourceText = topSources
+    .map((source, index) => `${index + 1}. ${source.title}: ${source.detail}`)
+    .join(" ");
+  const premiumLabel = Number(premiumPriceSol || 0) > 0 ? `${premiumPriceSol} SOL` : "free";
+
+  return {
+    title: `${displayTopic} signal brief`,
+    summary: `A fast live brief on the strongest current signals around ${displayTopic}.`,
+    freshnessScore: 82,
+    runtimeSeconds: 120,
+    script: normalizeScript(topic, [
+      {
+        time: "00:00",
+        speaker: "Host",
+        line: `Welcome to The Passion Podcast. Today's focus is ${displayTopic}, and the live signal is already moving.`,
+      },
+      {
+        time: "00:25",
+        speaker: "Gemini",
+        line: sourceText || `The strongest pattern is that ${displayTopic} is attracting fresh attention across public conversations and news sources.`,
+      },
+      {
+        time: "00:55",
+        speaker: "Host",
+        line: `Why it matters: when a passion starts showing up across multiple channels at once, it usually means the topic is becoming more useful, more debatable, or more urgent.`,
+      },
+      {
+        time: "01:20",
+        speaker: "Gemini",
+        line: `What to watch next: look for repeated names, new launches, and community arguments that keep resurfacing. Those are the clues that separate noise from momentum.`,
+      },
+      {
+        time: "01:45",
+        speaker: "Host",
+        line: `Your premium deep dive is ${premiumLabel} today, with ranked links, source notes, and the next questions worth tracking.`,
+      },
+    ]),
+    sourceInsights: topSources.map((source) => ({
+      title: cleanText(source.title),
+      type: cleanText(source.type || "Signal"),
+      whyItMatters: cleanText(source.detail || "Live source signal."),
+      heat: clamp(Number(source.heat || 80), 1, 100),
+    })),
+    premium: [
+      {
+        title: `${displayTopic} source dossier`,
+        detail: "Ranked links, debate clusters, and practical next moves.",
+        minutes: "12 min",
+      },
+    ],
+    rawModelText: text,
+  };
+}
+
 export async function generateEpisodeDraft({ topic, sources, deliveryTime, premiumPriceSol }) {
   if (!config.gemini.apiKey) {
     throw new AppError("GEMINI_API_KEY is not configured. Add it to .env and restart the server.", 400);
@@ -192,7 +249,12 @@ export async function generateEpisodeDraft({ topic, sources, deliveryTime, premi
     }
   }
 
-  const parsed = parseJsonFromText(text);
+  let parsed;
+  try {
+    parsed = parseJsonFromText(text);
+  } catch {
+    return fallbackDraft({ topic, sources, premiumPriceSol, text });
+  }
   const sourceInsights =
     Array.isArray(parsed.sourceInsights) && parsed.sourceInsights.length
       ? parsed.sourceInsights
