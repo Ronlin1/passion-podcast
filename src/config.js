@@ -1,9 +1,7 @@
 import "dotenv/config";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-const dirname = path.dirname(fileURLToPath(import.meta.url));
-const appRoot = path.resolve(dirname, "..");
+const appRoot = process.cwd();
 
 function bool(value) {
   return String(value || "").toLowerCase() === "true";
