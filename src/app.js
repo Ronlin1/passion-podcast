@@ -27,6 +27,17 @@ app.use(morgan("dev"));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(config.publicDir));
 
+function requestBody(req) {
+  if (!req.body) return {};
+  if (typeof req.body === "object" && !Buffer.isBuffer(req.body)) return req.body;
+  const raw = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : String(req.body);
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
 app.get("/vendor/solana-web3.js", async (_req, res) => {
   const filePath = path.join(config.appRoot, "node_modules", "@solana", "web3.js", "lib", "index.iife.min.js");
   try {
@@ -84,7 +95,8 @@ app.get("/api/audio/:filename", async (req, res, next) => {
 
 app.post("/api/topic-suggestions", async (req, res, next) => {
   try {
-    const topics = await suggestTopics(req.body?.seed || "");
+    const body = requestBody(req);
+    const topics = await suggestTopics(body.seed || "");
     res.json({ topics });
   } catch (error) {
     next(error);
@@ -94,7 +106,8 @@ app.post("/api/topic-suggestions", async (req, res, next) => {
 app.post("/api/generate", async (req, res, next) => {
   const startedAt = Date.now();
   try {
-    const topic = String(req.body?.topic || "").trim();
+    const body = requestBody(req);
+    const topic = String(body.topic || "").trim();
     if (!topic) {
       throw new AppError("Enter any topic or subject first.", 400);
     }
@@ -103,12 +116,12 @@ app.post("/api/generate", async (req, res, next) => {
     }
 
     const selectedSources =
-      Array.isArray(req.body?.sources) && req.body.sources.length
-        ? req.body.sources
+      Array.isArray(body.sources) && body.sources.length
+        ? body.sources
         : ["News", "Reddit", "Forums"];
-    const deliveryTime = String(req.body?.deliveryTime || "07:30");
-    const voiceId = String(req.body?.voiceId || "studio");
-    const requestedPrice = req.body?.premiumPriceSol;
+    const deliveryTime = String(body.deliveryTime || "07:30");
+    const voiceId = String(body.voiceId || "studio");
+    const requestedPrice = body.premiumPriceSol;
     const premiumPriceSol =
       requestedPrice === "" || requestedPrice === null || requestedPrice === undefined
         ? 0
@@ -194,10 +207,11 @@ app.get("/api/solana/config", (_req, res) => {
 
 app.post("/api/solana/verify", async (req, res, next) => {
   try {
-    const episodeId = String(req.body?.episodeId || "");
+    const body = requestBody(req);
+    const episodeId = String(body.episodeId || "");
     const payment = await verifySolanaPayment({
-      signature: req.body?.signature,
-      expectedSol: Number(req.body?.expectedSol || config.solana.premiumSol),
+      signature: body.signature,
+      expectedSol: Number(body.expectedSol || config.solana.premiumSol),
     });
     const episode = episodeId ? await markEpisodeUnlocked(episodeId, payment) : null;
     res.json({ payment, episode });
