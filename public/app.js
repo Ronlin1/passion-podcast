@@ -207,7 +207,13 @@ function renderEpisode(episode = state.currentEpisode) {
   qs("#episodeTitle").textContent = episode.title;
   qs("#episodeSummary").textContent = episode.summary;
   qs("#episodeStatus").textContent =
-    episode.audioUrl ? "MP3 ready" : episode.audioProvider === "elevenlabs-pending" ? "Rendering audio" : "Script ready";
+    episode.audioUrl
+      ? "MP3 ready"
+      : episode.audioProvider === "episode-pending"
+        ? "Preparing"
+        : episode.audioProvider === "elevenlabs-pending"
+          ? "Rendering audio"
+          : "Script ready";
   qs("#sourceCount").textContent = `${episode.sources.length} hits`;
   qs("#passTopic").textContent = episode.displayTopic.toUpperCase();
   const price = Number(episode.premiumPriceSol || 0);
@@ -274,7 +280,11 @@ function manageAudioPolling(episode) {
   clearInterval(state.audioPollTimer);
   state.audioPollTimer = null;
 
-  if (!episode || episode.audioUrl || episode.audioProvider !== "elevenlabs-pending") {
+  if (
+    !episode ||
+    episode.audioUrl ||
+    !["episode-pending", "elevenlabs-pending"].includes(episode.audioProvider)
+  ) {
     return;
   }
 
@@ -283,11 +293,14 @@ function manageAudioPolling(episode) {
       const data = await api("/api/episodes");
       state.episodes = data.episodes || [];
       const updated = state.episodes.find((item) => item.id === episode.id);
-      if (updated && updated.audioProvider !== "elevenlabs-pending") {
+      if (
+        updated &&
+        !["episode-pending", "elevenlabs-pending"].includes(updated.audioProvider)
+      ) {
         state.currentEpisode = updated;
         renderEpisode(updated);
         renderVault();
-        toast(updated.audioUrl ? "MP3 is ready." : "Audio render fell back to browser speech.");
+        toast(updated.audioUrl ? "Episode and MP3 are ready." : "Episode is ready. Audio fell back to browser speech.");
       }
     } catch {
       clearInterval(state.audioPollTimer);

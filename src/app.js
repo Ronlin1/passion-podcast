@@ -57,6 +57,21 @@ async function queueAudioRender(req, episode) {
   });
 }
 
+async function queueEpisodeGeneration(req, payload) {
+  const protocol = req.get("x-forwarded-proto") || req.protocol || "https";
+  const host = req.get("host");
+  if (!host) return;
+
+  const url = `${protocol}://${host}/.netlify/functions/generate-episode-background`;
+  await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).catch((error) => {
+    console.warn(`Episode background queue failed: ${error.message}`);
+  });
+}
+
 app.get("/vendor/solana-web3.js", async (_req, res) => {
   const filePath = path.join(config.appRoot, "node_modules", "@solana", "web3.js", "lib", "index.iife.min.js");
   try {
@@ -145,6 +160,50 @@ app.post("/api/generate", async (req, res, next) => {
       requestedPrice === "" || requestedPrice === null || requestedPrice === undefined
         ? 0
         : Math.max(0, Number(requestedPrice) || 0);
+    const episodeId = `${slugify(topic)}-${nanoid(8)}`;
+
+    if (isNetlifyRuntime()) {
+      const pendingEpisode = {
+        id: episodeId,
+        topic,
+        displayTopic: titleCase(topic),
+        title: `Preparing ${titleCase(topic)}`,
+        summary: "Researching live sources and preparing your AI-generated episode.",
+        createdAt: new Date().toISOString(),
+        deliveryTime,
+        duration: "05:00",
+        runtimeSeconds: 300,
+        freshnessScore: 0,
+        premiumPriceSol,
+        voice: resolveVoice(voiceId),
+        sourceMode: "pending",
+        sourceErrors: [],
+        sources: [],
+        sourceInsights: [],
+        script: [],
+        premium: [],
+        audioUrl: "",
+        audioProvider: "episode-pending",
+        audioBytes: 0,
+        audioNote: "Episode is generating in the background.",
+        premiumUnlocked: false,
+        listens: 0,
+        generationMs: Date.now() - startedAt,
+      };
+
+      await saveEpisode(pendingEpisode);
+      await queueEpisodeGeneration(req, {
+        episodeId,
+        topic,
+        selectedSources,
+        deliveryTime,
+        premiumPriceSol,
+        voiceId,
+        createdAt: pendingEpisode.createdAt,
+      });
+      res.json({ episode: pendingEpisode, snowflake: { skipped: true, reason: "Pending background generation" } });
+      return;
+    }
 
     const gathered = await gatherSources(topic, selectedSources, 4);
     const sourceRows = gathered.items.length ? gathered.items : fallbackSources(titleCase(topic));
@@ -157,7 +216,6 @@ app.post("/api/generate", async (req, res, next) => {
       premiumPriceSol,
     });
 
-    const episodeId = `${slugify(topic)}-${nanoid(8)}`;
     let audio = {
       audioUrl: "",
       provider: "elevenlabs-pending",
