@@ -115,7 +115,7 @@ function renderStatus() {
     ["ElevenLabs", services.elevenLabs, "MP3 voice generation"],
     ["Solana", services.solana, "Premium devnet unlock"],
     ["Snowflake", services.snowflake, "Warehouse persistence"],
-  ];
+  ].filter(([, ready]) => ready);
 
   qs("#setupGrid").innerHTML = cards
     .map(
@@ -222,7 +222,9 @@ function renderEpisode(episode = state.currentEpisode) {
   qs("#paySolana").hidden = price === 0;
 
   if (episode.audioUrl) {
-    audio.src = `${episode.audioUrl}?v=${encodeURIComponent(episode.id)}`;
+    audio.src = episode.audioUrl.startsWith("data:")
+      ? episode.audioUrl
+      : `${episode.audioUrl}?v=${encodeURIComponent(episode.id)}`;
     audio.style.display = "block";
     download.href = episode.audioUrl;
     download.download = `${episode.displayTopic || "episode"}-${episode.id}.mp3`;
@@ -380,7 +382,14 @@ async function generateEpisode(event) {
     state.episodes = [data.episode, ...state.episodes.filter((item) => item.id !== data.episode.id)];
     renderEpisode();
     renderVault();
-    toast(data.episode.audioUrl ? "Live episode and MP3 generated." : "Live script generated. Add ElevenLabs key for MP3.");
+    const isPending = ["episode-pending", "elevenlabs-pending"].includes(data.episode.audioProvider);
+    toast(
+      data.episode.audioUrl
+        ? "Live episode and MP3 generated."
+        : isPending
+          ? "Episode is generating. MP3 will appear shortly."
+          : "Live script generated. Browser playback is available.",
+    );
   } catch (error) {
     toast(error.message);
     qs("#episodeStatus").textContent = "Error";

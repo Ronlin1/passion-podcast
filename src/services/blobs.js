@@ -4,5 +4,5 @@ export function isNetlifyRuntime() {
 
 export async function getBlobStore(name) {
   const { getStore } = await import("@netlify/blobs");
-  return getStore(name, { consistency: "strong" });
+  return getStore({ name, consistency: "strong" });
 }
