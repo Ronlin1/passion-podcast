@@ -15,7 +15,7 @@ function scriptToSpeechText(script) {
     .slice(0, 9500);
 }
 
-function resolveVoice(voiceIdOrPreset) {
+export function resolveVoice(voiceIdOrPreset) {
   const requested = String(voiceIdOrPreset || "").trim();
   const matched = config.elevenLabs.voices.find(
     (voice) => voice.id === requested || voice.voiceId === requested,

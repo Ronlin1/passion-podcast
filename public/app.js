@@ -5,6 +5,7 @@ const state = {
   solana: null,
   isGenerating: false,
   speechUtterance: null,
+  audioPollTimer: null,
 };
 
 const fallbackTopics = [
@@ -205,7 +206,8 @@ function renderEpisode(episode = state.currentEpisode) {
   qs("#heroTitle").textContent = `${episode.displayTopic}, broadcast daily.`;
   qs("#episodeTitle").textContent = episode.title;
   qs("#episodeSummary").textContent = episode.summary;
-  qs("#episodeStatus").textContent = episode.audioUrl ? "MP3 ready" : "Script ready";
+  qs("#episodeStatus").textContent =
+    episode.audioUrl ? "MP3 ready" : episode.audioProvider === "elevenlabs-pending" ? "Rendering audio" : "Script ready";
   qs("#sourceCount").textContent = `${episode.sources.length} hits`;
   qs("#passTopic").textContent = episode.displayTopic.toUpperCase();
   const price = Number(episode.premiumPriceSol || 0);
@@ -227,6 +229,8 @@ function renderEpisode(episode = state.currentEpisode) {
     download.classList.add("disabled");
     download.setAttribute("aria-disabled", "true");
   }
+
+  manageAudioPolling(episode);
 
   qs("#scriptList").innerHTML = episode.script
     .map(
@@ -264,6 +268,32 @@ function renderEpisode(episode = state.currentEpisode) {
       `,
     )
     .join("");
+}
+
+function manageAudioPolling(episode) {
+  clearInterval(state.audioPollTimer);
+  state.audioPollTimer = null;
+
+  if (!episode || episode.audioUrl || episode.audioProvider !== "elevenlabs-pending") {
+    return;
+  }
+
+  state.audioPollTimer = setInterval(async () => {
+    try {
+      const data = await api("/api/episodes");
+      state.episodes = data.episodes || [];
+      const updated = state.episodes.find((item) => item.id === episode.id);
+      if (updated && updated.audioProvider !== "elevenlabs-pending") {
+        state.currentEpisode = updated;
+        renderEpisode(updated);
+        renderVault();
+        toast(updated.audioUrl ? "MP3 is ready." : "Audio render fell back to browser speech.");
+      }
+    } catch {
+      clearInterval(state.audioPollTimer);
+      state.audioPollTimer = null;
+    }
+  }, 5000);
 }
 
 function renderVault() {

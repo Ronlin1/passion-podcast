@@ -50,6 +50,31 @@ export async function saveEpisode(episode) {
   return episode;
 }
 
+export async function updateEpisodeAudio(episodeId, audio) {
+  const episodes = await listEpisodes();
+  const next = episodes.map((episode) =>
+    episode.id === episodeId
+      ? {
+          ...episode,
+          audioUrl: audio.audioUrl || episode.audioUrl || "",
+          audioProvider: audio.provider || episode.audioProvider,
+          audioBytes: audio.bytes || 0,
+          audioNote: audio.skippedReason || audio.audioNote || "",
+          voice: audio.voice || episode.voice,
+        }
+      : episode,
+  );
+
+  if (isNetlifyRuntime()) {
+    const store = await blobStore();
+    await store.setJSON(episodesKey, next);
+  } else {
+    await fs.writeFile(episodesFile, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  }
+
+  return next.find((episode) => episode.id === episodeId) || null;
+}
+
 export async function markEpisodeUnlocked(episodeId, payment) {
   const episodes = await listEpisodes();
   const next = episodes.map((episode) =>

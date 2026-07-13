@@ -7,7 +7,7 @@ import { nanoid } from "nanoid";
 import { config, serviceStatus } from "./config.js";
 import { AppError, toPublicError } from "./lib/errors.js";
 import { slugify, titleCase } from "./lib/text.js";
-import { synthesizeEpisodeAudio } from "./services/elevenlabs.js";
+import { resolveVoice, synthesizeEpisodeAudio } from "./services/elevenlabs.js";
 import { generateEpisodeDraft, suggestTopics } from "./services/gemini.js";
 import { gatherSources, fallbackSources } from "./services/sources.js";
 import { listEpisodes, markEpisodeUnlocked, saveEpisode } from "./services/store.js";
@@ -36,6 +36,25 @@ function requestBody(req) {
   } catch {
     return {};
   }
+}
+
+async function queueAudioRender(req, episode) {
+  const protocol = req.get("x-forwarded-proto") || req.protocol || "https";
+  const host = req.get("host");
+  if (!host) return;
+
+  const url = `${protocol}://${host}/.netlify/functions/render-audio-background`;
+  await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      episodeId: episode.id,
+      script: episode.script,
+      voiceId: episode.voice?.id || "studio",
+    }),
+  }).catch((error) => {
+    console.warn(`Audio background queue failed: ${error.message}`);
+  });
 }
 
 app.get("/vendor/solana-web3.js", async (_req, res) => {
@@ -139,24 +158,33 @@ app.post("/api/generate", async (req, res, next) => {
     });
 
     const episodeId = `${slugify(topic)}-${nanoid(8)}`;
-    let audio;
-    try {
-      audio = await synthesizeEpisodeAudio({
-        episodeId,
-        script: draft.script,
-        voiceId,
-      });
-    } catch (error) {
-      audio = {
-        audioUrl: "",
-        provider: "browser-speech-fallback",
-        bytes: 0,
-        voice: error.details?.voice || config.elevenLabs.voices[0],
-        skippedReason:
-          error.statusCode === 402
-            ? "ElevenLabs rejected this voice for the current plan. Choose another voice or use a paid voice-enabled plan."
-            : error.message,
-      };
+    let audio = {
+      audioUrl: "",
+      provider: "elevenlabs-pending",
+      bytes: 0,
+      voice: resolveVoice(voiceId),
+      skippedReason: "Audio is rendering in the background.",
+    };
+
+    if (!isNetlifyRuntime()) {
+      try {
+        audio = await synthesizeEpisodeAudio({
+          episodeId,
+          script: draft.script,
+          voiceId,
+        });
+      } catch (error) {
+        audio = {
+          audioUrl: "",
+          provider: "browser-speech-fallback",
+          bytes: 0,
+          voice: error.details?.voice || config.elevenLabs.voices[0],
+          skippedReason:
+            error.statusCode === 402
+              ? "ElevenLabs rejected this voice for the current plan. Choose another voice or use a paid voice-enabled plan."
+              : error.message,
+        };
+      }
     }
 
     const episode = {
@@ -188,6 +216,9 @@ app.post("/api/generate", async (req, res, next) => {
     };
 
     await saveEpisode(episode);
+    if (isNetlifyRuntime()) {
+      await queueAudioRender(req, episode);
+    }
     let snowflake = { skipped: true, reason: "Snowflake disabled" };
     try {
       snowflake = await insertEpisodeIntoSnowflake(episode);
