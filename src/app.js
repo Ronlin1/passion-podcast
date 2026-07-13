@@ -7,13 +7,13 @@ import { nanoid } from "nanoid";
 import { config, serviceStatus } from "./config.js";
 import { AppError, toPublicError } from "./lib/errors.js";
 import { slugify, titleCase } from "./lib/text.js";
-import { resolveVoice, synthesizeEpisodeAudio } from "./services/elevenlabs.js";
+import { synthesizeEpisodeAudio } from "./services/elevenlabs.js";
 import { generateEpisodeDraft, suggestTopics } from "./services/gemini.js";
 import { gatherSources, fallbackSources } from "./services/sources.js";
 import { listEpisodes, markEpisodeUnlocked, saveEpisode } from "./services/store.js";
 import { initSnowflake, insertEpisodeIntoSnowflake, snowflakeEnabled } from "./services/snowflake.js";
 import { solanaClientConfig, verifySolanaPayment } from "./services/solana.js";
-import { getBlobStore, isNetlifyRuntime } from "./services/blobs.js";
+import { isNetlifyRuntime } from "./services/blobs.js";
 
 export const app = express();
 
@@ -38,38 +38,11 @@ function requestBody(req) {
   }
 }
 
-async function queueAudioRender(req, episode) {
-  const protocol = req.get("x-forwarded-proto") || req.protocol || "https";
-  const host = req.get("host");
-  if (!host) return;
-
-  const url = `${protocol}://${host}/.netlify/functions/render-audio-background`;
-  await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      episodeId: episode.id,
-      script: episode.script,
-      voiceId: episode.voice?.id || "studio",
-    }),
-  }).catch((error) => {
-    console.warn(`Audio background queue failed: ${error.message}`);
-  });
-}
-
-async function queueEpisodeGeneration(req, payload) {
-  const protocol = req.get("x-forwarded-proto") || req.protocol || "https";
-  const host = req.get("host");
-  if (!host) return;
-
-  const url = `${protocol}://${host}/.netlify/functions/generate-episode-background`;
-  await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  }).catch((error) => {
-    console.warn(`Episode background queue failed: ${error.message}`);
-  });
+function formatDuration(seconds) {
+  const total = Math.max(0, Number(seconds) || 0);
+  const minutes = Math.floor(total / 60);
+  const remaining = String(total % 60).padStart(2, "0");
+  return `${minutes}:${remaining}`;
 }
 
 app.get("/vendor/solana-web3.js", async (_req, res) => {
@@ -110,15 +83,7 @@ app.get("/api/audio/:filename", async (req, res, next) => {
     }
 
     if (isNetlifyRuntime()) {
-      const store = await getBlobStore("passion-podcast-audio");
-      const audio = await store.get(filename, { type: "arrayBuffer" });
-      if (!audio) {
-        throw new AppError("Audio file not found.", 404);
-      }
-      res.setHeader("Content-Type", "audio/mpeg");
-      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-      res.send(Buffer.from(audio));
-      return;
+      throw new AppError("Audio is delivered inline on Netlify deployments.", 404);
     }
 
     res.sendFile(path.join(config.audioDir, filename));
@@ -162,50 +127,7 @@ app.post("/api/generate", async (req, res, next) => {
         : Math.max(0, Number(requestedPrice) || 0);
     const episodeId = `${slugify(topic)}-${nanoid(8)}`;
 
-    if (isNetlifyRuntime()) {
-      const pendingEpisode = {
-        id: episodeId,
-        topic,
-        displayTopic: titleCase(topic),
-        title: `Preparing ${titleCase(topic)}`,
-        summary: "Researching live sources and preparing your AI-generated episode.",
-        createdAt: new Date().toISOString(),
-        deliveryTime,
-        duration: "05:00",
-        runtimeSeconds: 300,
-        freshnessScore: 0,
-        premiumPriceSol,
-        voice: resolveVoice(voiceId),
-        sourceMode: "pending",
-        sourceErrors: [],
-        sources: [],
-        sourceInsights: [],
-        script: [],
-        premium: [],
-        audioUrl: "",
-        audioProvider: "episode-pending",
-        audioBytes: 0,
-        audioNote: "Episode is generating in the background.",
-        premiumUnlocked: false,
-        listens: 0,
-        generationMs: Date.now() - startedAt,
-      };
-
-      await saveEpisode(pendingEpisode);
-      await queueEpisodeGeneration(req, {
-        episodeId,
-        topic,
-        selectedSources,
-        deliveryTime,
-        premiumPriceSol,
-        voiceId,
-        createdAt: pendingEpisode.createdAt,
-      });
-      res.json({ episode: pendingEpisode, snowflake: { skipped: true, reason: "Pending background generation" } });
-      return;
-    }
-
-    const gathered = await gatherSources(topic, selectedSources, 4);
+    const gathered = await gatherSources(topic, selectedSources, isNetlifyRuntime() ? 2 : 4);
     const sourceRows = gathered.items.length ? gathered.items : fallbackSources(titleCase(topic));
     const sourceMode = gathered.items.length ? "live" : "fallback";
 
@@ -216,33 +138,24 @@ app.post("/api/generate", async (req, res, next) => {
       premiumPriceSol,
     });
 
-    let audio = {
-      audioUrl: "",
-      provider: "elevenlabs-pending",
-      bytes: 0,
-      voice: resolveVoice(voiceId),
-      skippedReason: "Audio is rendering in the background.",
-    };
-
-    if (!isNetlifyRuntime()) {
-      try {
-        audio = await synthesizeEpisodeAudio({
-          episodeId,
-          script: draft.script,
-          voiceId,
-        });
-      } catch (error) {
-        audio = {
-          audioUrl: "",
-          provider: "browser-speech-fallback",
-          bytes: 0,
-          voice: error.details?.voice || config.elevenLabs.voices[0],
-          skippedReason:
-            error.statusCode === 402
-              ? "ElevenLabs rejected this voice for the current plan. Choose another voice or use a paid voice-enabled plan."
-              : error.message,
-        };
-      }
+    let audio;
+    try {
+      audio = await synthesizeEpisodeAudio({
+        episodeId,
+        script: draft.script,
+        voiceId,
+      });
+    } catch (error) {
+      audio = {
+        audioUrl: "",
+        provider: "browser-speech-fallback",
+        bytes: 0,
+        voice: error.details?.voice || config.elevenLabs.voices[0],
+        skippedReason:
+          error.statusCode === 402
+            ? "ElevenLabs rejected this voice for the current plan. Choose another voice or use a paid voice-enabled plan."
+            : error.message,
+      };
     }
 
     const episode = {
@@ -253,7 +166,7 @@ app.post("/api/generate", async (req, res, next) => {
       summary: draft.summary,
       createdAt: new Date().toISOString(),
       deliveryTime,
-      duration: "05:00",
+      duration: formatDuration(draft.runtimeSeconds),
       runtimeSeconds: draft.runtimeSeconds,
       freshnessScore: draft.freshnessScore,
       premiumPriceSol,
@@ -274,9 +187,6 @@ app.post("/api/generate", async (req, res, next) => {
     };
 
     await saveEpisode(episode);
-    if (isNetlifyRuntime()) {
-      await queueAudioRender(req, episode);
-    }
     let snowflake = { skipped: true, reason: "Snowflake disabled" };
     try {
       snowflake = await insertEpisodeIntoSnowflake(episode);

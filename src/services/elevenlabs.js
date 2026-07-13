@@ -3,7 +3,7 @@ import path from "node:path";
 import { config } from "../config.js";
 import { AppError } from "../lib/errors.js";
 import { fetchWithTimeout } from "../lib/fetch.js";
-import { getBlobStore, isNetlifyRuntime } from "./blobs.js";
+import { isNetlifyRuntime } from "./blobs.js";
 
 function scriptToSpeechText(script) {
   return script
@@ -33,8 +33,6 @@ export async function synthesizeEpisodeAudio({ episodeId, script, voiceId }) {
       skippedReason: "ELEVENLABS_API_KEY is not configured. Add it to .env to create real MP3 files.",
     };
   }
-
-  await fs.mkdir(config.audioDir, { recursive: true });
 
   const url = new URL(`https://api.elevenlabs.io/v1/text-to-speech/${voice.voiceId}`);
   url.searchParams.set("output_format", config.elevenLabs.outputFormat);
@@ -74,24 +72,15 @@ export async function synthesizeEpisodeAudio({ episodeId, script, voiceId }) {
   const filename = `${episodeId}.mp3`;
 
   if (isNetlifyRuntime()) {
-    const store = await getBlobStore("passion-podcast-audio");
-    await store.set(filename, buffer, {
-      metadata: {
-        contentType: "audio/mpeg",
-        episodeId,
-        voice: voice.label,
-        createdAt: new Date().toISOString(),
-      },
-    });
-
     return {
-      audioUrl: `/api/audio/${filename}`,
+      audioUrl: `data:audio/mpeg;base64,${buffer.toString("base64")}`,
       provider: "elevenlabs",
       voice,
       bytes: buffer.length,
     };
   }
 
+  await fs.mkdir(config.audioDir, { recursive: true });
   const filePath = path.join(config.audioDir, filename);
   await fs.writeFile(filePath, buffer);
 

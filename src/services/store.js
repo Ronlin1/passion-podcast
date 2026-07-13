@@ -1,13 +1,17 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
-import { getBlobStore, isNetlifyRuntime } from "./blobs.js";
+import { isNetlifyRuntime } from "./blobs.js";
 
 const episodesFile = path.join(config.dataDir, "episodes.json");
-const episodesKey = "episodes.json";
 
-async function blobStore() {
-  return getBlobStore("passion-podcast-data");
+function memoryEpisodes() {
+  globalThis.__passionPodcastEpisodes ||= [];
+  return globalThis.__passionPodcastEpisodes;
+}
+
+function setMemoryEpisodes(episodes) {
+  globalThis.__passionPodcastEpisodes = episodes;
 }
 
 async function ensureStore() {
@@ -22,9 +26,7 @@ async function ensureStore() {
 
 export async function listEpisodes() {
   if (isNetlifyRuntime()) {
-    const store = await blobStore();
-    const episodes = await store.get(episodesKey, { type: "json" });
-    return Array.isArray(episodes) ? episodes : [];
+    return memoryEpisodes();
   }
 
   await ensureStore();
@@ -39,10 +41,10 @@ export async function listEpisodes() {
 
 export async function saveEpisode(episode) {
   const episodes = await listEpisodes();
-  const next = [episode, ...episodes.filter((item) => item.id !== episode.id)].slice(0, 50);
+  const maxEpisodes = isNetlifyRuntime() ? 8 : 50;
+  const next = [episode, ...episodes.filter((item) => item.id !== episode.id)].slice(0, maxEpisodes);
   if (isNetlifyRuntime()) {
-    const store = await blobStore();
-    await store.setJSON(episodesKey, next);
+    setMemoryEpisodes(next);
     return episode;
   }
 
@@ -66,8 +68,7 @@ export async function updateEpisodeAudio(episodeId, audio) {
   );
 
   if (isNetlifyRuntime()) {
-    const store = await blobStore();
-    await store.setJSON(episodesKey, next);
+    setMemoryEpisodes(next);
   } else {
     await fs.writeFile(episodesFile, `${JSON.stringify(next, null, 2)}\n`, "utf8");
   }
@@ -87,8 +88,7 @@ export async function markEpisodeUnlocked(episodeId, payment) {
       : episode,
   );
   if (isNetlifyRuntime()) {
-    const store = await blobStore();
-    await store.setJSON(episodesKey, next);
+    setMemoryEpisodes(next);
     return next.find((episode) => episode.id === episodeId) || null;
   }
 

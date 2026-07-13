@@ -23,7 +23,7 @@ const fallbackTopics = [
 
 const pipelineSteps = [
   ["radar", "Live source sweep", "News, Reddit, and forum signals"],
-  ["brain-circuit", "Gemini script", "Structured 5-minute episode JSON"],
+  ["brain-circuit", "Gemini script", "Structured episode JSON"],
   ["audio-lines", "ElevenLabs render", "MP3 voiceover saved locally"],
   ["database", "Vault write", "Local JSON and optional Snowflake"],
   ["wallet-cards", "Premium pass", "Solana devnet unlock ready"],

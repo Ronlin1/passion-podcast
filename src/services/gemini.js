@@ -14,7 +14,7 @@ Premium deep-dive price: ${premiumPriceSol} SOL
 Live source rows:
 ${JSON.stringify(sources, null, 2)}
 
-Create a polished 5-minute podcast episode. Use the source rows as current context. If a source is weak, say so indirectly by focusing on higher-confidence patterns. Do not invent exact facts, quotes, URLs, or named claims that are not supported by the source rows.
+Create a polished short podcast episode. Use the source rows as current context. If a source is weak, say so indirectly by focusing on higher-confidence patterns. Do not invent exact facts, quotes, URLs, or named claims that are not supported by the source rows.
 
 Return strict JSON only. No markdown. No commentary.
 
@@ -23,7 +23,7 @@ Schema:
   "title": "short episode title",
   "summary": "one-sentence editorial summary",
   "freshnessScore": 0-100,
-  "runtimeSeconds": 300,
+  "runtimeSeconds": 120,
   "script": [
     {"time": "00:00", "speaker": "Host", "line": "spoken line"},
     {"time": "00:40", "speaker": "Gemini", "line": "spoken line"}
@@ -37,8 +37,8 @@ Schema:
 }
 
 Script requirements:
-- 6 to 8 timed segments.
-- Around 650 to 800 spoken words total.
+- 4 to 5 timed segments.
+- Around 230 to 320 spoken words total.
 - Energetic, intelligent, and cinematic, but useful.
 - Include a clear "why it matters" beat.
 - Include one "what to watch next" beat.
@@ -82,6 +82,10 @@ function parseJsonFromText(text) {
   }
 }
 
+function candidateModels() {
+  return [...new Set([config.gemini.model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"].filter(Boolean))];
+}
+
 async function callInteractions(prompt) {
   const url = "https://generativelanguage.googleapis.com/v1beta/interactions";
   const data = await fetchJson(
@@ -102,8 +106,8 @@ async function callInteractions(prompt) {
   return extractGeminiText(data);
 }
 
-async function callGenerateContent(prompt) {
-  const model = encodeURIComponent(config.gemini.model);
+async function callGenerateContentWithModel(prompt, modelName) {
+  const model = encodeURIComponent(modelName);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
     config.gemini.apiKey,
   )}`;
@@ -120,11 +124,29 @@ async function callGenerateContent(prompt) {
             parts: [{ text: prompt }],
           },
         ],
+        generationConfig: {
+          temperature: 0.82,
+          maxOutputTokens: 1200,
+          responseMimeType: "application/json",
+        },
       }),
     },
-    30000,
+    18000,
   );
   return extractGeminiText(data);
+}
+
+async function callGenerateContent(prompt) {
+  let lastError;
+  for (const modelName of candidateModels()) {
+    try {
+      const text = await callGenerateContentWithModel(prompt, modelName);
+      if (text) return text;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new AppError("Gemini generation returned no text.", 502);
 }
 
 function normalizeScript(topic, script) {
@@ -137,7 +159,7 @@ function normalizeScript(topic, script) {
   ];
 
   const rows = Array.isArray(script) && script.length ? script : fallback;
-  return rows.slice(0, 8).map((row, index) => ({
+  return rows.slice(0, 5).map((row, index) => ({
     time: cleanText(row.time || `0${Math.floor(index / 2)}:${index % 2 ? "35" : "00"}`),
     speaker: cleanText(row.speaker || (index % 2 ? "Gemini" : "Host")),
     line: cleanText(row.line || row.text || ""),
@@ -154,18 +176,18 @@ export async function generateEpisodeDraft({ topic, sources, deliveryTime, premi
   let firstError;
 
   try {
-    text = await callInteractions(prompt);
+    text = await callGenerateContent(prompt);
   } catch (error) {
     firstError = error;
   }
 
   if (!text) {
     try {
-      text = await callGenerateContent(prompt);
+      text = await callInteractions(prompt);
     } catch (error) {
       throw new AppError("Gemini generation failed.", error.statusCode || 502, {
-        interactionsError: firstError?.message,
-        generateContentError: error.message,
+        generateContentError: firstError?.message,
+        interactionsError: error.message,
       });
     }
   }
@@ -185,7 +207,7 @@ export async function generateEpisodeDraft({ topic, sources, deliveryTime, premi
     title: cleanText(parsed.title || `Today's ${titleCase(topic)} signal`),
     summary: cleanText(parsed.summary || `A fast daily brief on what changed in ${titleCase(topic)}.`),
     freshnessScore: clamp(Number(parsed.freshnessScore || 88), 1, 100),
-    runtimeSeconds: clamp(Number(parsed.runtimeSeconds || 300), 60, 600),
+    runtimeSeconds: clamp(Number(parsed.runtimeSeconds || 120), 60, 300),
     script: normalizeScript(topic, parsed.script),
     sourceInsights: sourceInsights.slice(0, 8).map((insight) => ({
       title: cleanText(insight.title),
@@ -228,9 +250,9 @@ export async function suggestTopics(seed = "") {
   }.`;
   let text = "";
   try {
-    text = await callInteractions(prompt);
-  } catch {
     text = await callGenerateContent(prompt);
+  } catch {
+    text = await callInteractions(prompt);
   }
   const parsed = parseJsonFromText(text);
   return Array.isArray(parsed.topics) ? parsed.topics.map(cleanText).filter(Boolean).slice(0, 8) : [];
